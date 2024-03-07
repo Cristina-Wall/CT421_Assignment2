@@ -1,0 +1,165 @@
+import networkx as nx
+import random
+import matplotlib.pyplot as plt
+from collections import Counter
+import copy
+
+# Method to generate a small world graph with n nodes, each node connected to k nearest neighbors, and rewiring probability p.
+def generate_small_world_graph(nodes, k, p):
+    return nx.watts_strogatz_graph(nodes, k, p)
+
+# Method to assign random colours to each node
+def assign_random_colors(graph, colors):
+    color_mapping = {node: {'color': tuple(random.choice(colors))} for node in graph.nodes}
+    nx.set_node_attributes(graph, color_mapping)
+
+# Method to define a list of colours
+def choose_colors(num_colors):
+    # Choose random numbers for RBG elements of each colour
+    return [(random.random(), random.random(), random.random()) for _ in range(num_colors)]
+
+# Method to count how many conflicts there are
+def count_conflicts(graph):
+    conflicts = 0
+    for node in graph.nodes:
+        neighbors = list(graph.neighbors(node))
+        for neighbor in neighbors:
+            if graph.nodes[node]['color'] == graph.nodes[neighbor]['color']:
+                conflicts += 1
+    return conflicts
+
+# Method to change the colors of the nodes
+def change_node_color(graph, node, colors):
+    neighbor_colors = [graph.nodes[neighbor].get('color') for neighbor in graph.neighbors(node) if 'color' in graph.nodes[neighbor]]
+    neighbor_color_counts = Counter(tuple(color) for color in neighbor_colors)
+    # Check if there's a colour not present among neighbors
+    available_colors = [color for color in colors if neighbor_color_counts[tuple(color)] == 0]
+    if available_colors:
+        new_color = random.choice(available_colors)
+    else:
+        # If all colours are present among neighbors, choose the colour with the fewest occurrences
+        new_color = min(neighbor_color_counts, key=neighbor_color_counts.get)
+    
+    # Create a new dictionary with updated color attribute
+    new_attributes = {node: {'color': new_color}}
+
+    # Update node attributes
+    nx.set_node_attributes(graph, new_attributes)
+
+# Method to add a new color to the list of colors
+def add_color(colors):
+    new_color = (random.random(), random.random(), random.random())
+    colors.append(new_color)
+    return colors
+
+# Method to change the color of a random node in order to test how the graph can recover
+def change_random_node_color(perfect_graph, color_list):
+    new_graph = copy.deepcopy(perfect_graph)
+
+    # Pick a random node
+    random_node = random.choice(list(new_graph.nodes))
+
+    # Change the color of the random node
+    new_color = random.choice(color_list)
+    new_attributes = {random_node: {'color': new_color}}
+    nx.set_node_attributes(new_graph, new_attributes)
+
+    # Print the value of the node that was changed
+    print(f'Node {random_node} was changed to color {perfect_graph.nodes[random_node]["color"]}')
+
+    # node_colors = list(nx.get_node_attributes(new_graph, 'color').values())
+    # nx.draw(new_graph, with_labels=True, node_color=node_colors)
+    # plt.show()
+
+    return new_graph
+
+def fix_graph(graphs_in, conflicts, colors):
+    print('Conflicts after changed node: ', conflicts)
+
+    # Create new graphs and update them in iterations
+    while conflicts > 0:
+        for i in range(100):
+            new_graph = copy.deepcopy(graphs_in[i])
+            for node in new_graph.nodes:
+                change_node_color(new_graph, node, colors)
+            conflicts = count_conflicts(new_graph)
+            print(f'Conflicts after iteration {i+1}: {conflicts}')
+            
+            graphs_in.append(copy.deepcopy(new_graph))
+
+            if(conflicts == 0):
+                return graphs_in
+
+            new_graph.clear()
+        
+        # While the graph has conflicts add another color and repeat
+        colors = add_color(colors)
+
+# Choose the colours and generate the starting graph
+colors = choose_colors(2)
+graph1 = generate_small_world_graph(100, 5, 0.25)
+# Assign random colours to the nodes of the starting graph
+assign_random_colors(graph1, colors)
+conflicts = count_conflicts(graph1)
+# print(f'Initial conflicts: {conflicts}')
+
+# Add the graphs to a list so that we can plot them if needed
+graphs = [graph1]
+
+# Create new graphs and update them in iterations
+while conflicts > 0:
+    for i in range(100):
+        new_graph = copy.deepcopy(graphs[i])
+        for node in new_graph.nodes:
+            change_node_color(new_graph, node, colors)
+        conflicts = count_conflicts(new_graph)
+        # print(f'Conflicts after iteration {i+1}: {conflicts}')
+        
+        graphs.append(copy.deepcopy(new_graph))
+
+        if(conflicts == 0):
+            break
+
+        new_graph.clear()
+    
+    # While the graph has conflicts add another color and repeat
+    colors = add_color(colors)
+
+print("Num colors at solution: ", len(colors))
+
+# Randomly change one node to create conflicts
+# Check the number of conflicts and while it is still 0, keep changing random node colors
+for _ in range(50):
+    random_node_graph = change_random_node_color(graphs[-1], colors)
+    conflicts = count_conflicts(random_node_graph)
+
+graphs_new = [random_node_graph]
+fix_graph(graphs_new, conflicts, colors)
+print("Num colors after fixed node: ", len(colors))
+
+
+
+# Plot the first, perfect and random_node_changed graphs
+# Initial graph
+fix, axes = plt.subplots(1, 4, figsize=(20, 5))
+node_colors_1 = list(nx.get_node_attributes(graphs[0], 'color').values())
+nx.draw(graphs[0], ax=axes[0], with_labels=True, node_color=node_colors_1)
+axes[0].set_title('Initial Graph')
+
+# Solution graph
+node_colors_2 = list(nx.get_node_attributes(graphs[-1], 'color').values())
+nx.draw(graphs[-1], ax=axes[1], with_labels=True, node_color=node_colors_2)
+axes[1].set_title('Perfect Graph')
+
+# Graph with one node changed
+node_colors_3 = list(nx.get_node_attributes(random_node_graph, 'color').values())
+nx.draw(random_node_graph, ax=axes[2], with_labels=True, node_color=node_colors_3)
+axes[2].set_title('Node Changed Graph')
+
+# Graph after changed node fixed
+node_colors_4 = list(nx.get_node_attributes(graphs_new[-1], 'color').values())
+nx.draw(graphs_new[-1], ax=axes[3], with_labels=True, node_color=node_colors_4)
+axes[3].set_title('Changed Node Fixed Graph')
+
+plt.tight_layout()
+plt.show()
